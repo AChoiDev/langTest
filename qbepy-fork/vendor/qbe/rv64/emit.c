@@ -131,10 +131,14 @@ slot(Ref r, Fn *fn)
 static void
 emitaddr(Con *c, FILE *f)
 {
-	assert(c->sym.type == SGlo);
+	assert((c->sym.type & ~SExt) == SGlo);
 	fputs(str(c->sym.id), f);
-	if (c->bits.i)
+	if (c->bits.i) {
+		/* TODO: fix isel to ensure no offset for SGlo */
+		if (c->sym.type & SExt)
+			die("extern with offset is not supported");
 		fprintf(f, "+%"PRIi64, c->bits.i);
+	}
 }
 
 static void
@@ -231,7 +235,14 @@ loadaddr(Con *c, char *rn, FILE *f)
 {
 	char off[32];
 
-	if (c->sym.type == SThr) {
+	switch (c->sym.type) {
+	case SGlo:
+	case SExt:
+		fprintf(f, "\t%s %s, ", c->sym.type == SExt ? "lga" : "lla", rn);
+		emitaddr(c, f);
+		fputc('\n', f);
+		break;
+	case SThr:
 		if (c->bits.i)
 			sprintf(off, "+%"PRIi64, c->bits.i);
 		else
@@ -242,10 +253,9 @@ loadaddr(Con *c, char *rn, FILE *f)
 			rn, rn, str(c->sym.id), off);
 		fprintf(f, "\taddi %s, %s, %%tprel_lo(%s)%s\n",
 			rn, rn, str(c->sym.id), off);
-	} else {
-		fprintf(f, "\tla %s, ", rn);
-		emitaddr(c, f);
-		fputc('\n', f);
+		break;
+	case SExtThr:
+		die("extern thread unavailable on rv64");
 	}
 }
 
@@ -282,7 +292,7 @@ fixmem(Ref *pr, Fn *fn, FILE *f)
 	if (rtype(r) == RCon) {
 		c = &fn->con[r.val];
 		if (c->type == CAddr)
-		if (c->sym.type == SThr) {
+		if (c->sym.type != SGlo) {
 			loadcon(c, T6, Kl, f);
 			*pr = TMP(T6);
 		}
@@ -387,7 +397,7 @@ emitins(Ins *i, Fn *fn, FILE *f)
 		case RCon:
 			con = &fn->con[i->arg[0].val];
 			if (con->type != CAddr
-			|| con->sym.type != SGlo
+			|| (con->sym.type & SThr)
 			|| con->bits.i)
 				goto Invalid;
 			fprintf(f, "\tcall %s\n", str(con->sym.id));

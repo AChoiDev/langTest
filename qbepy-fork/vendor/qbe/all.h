@@ -43,7 +43,6 @@ typedef struct Lnk Lnk;
 typedef struct Target Target;
 
 enum {
-	NString = 80,
 	NIns    = 1 << 20,
 	NAlign  = 3,
 	NField  = 32,
@@ -53,6 +52,7 @@ enum {
 struct Target {
 	char name[16];
 	char apple;
+	char windows;
 	int gpr0;   /* first general purpose reg */
 	int ngpr;
 	int fpr0;   /* first floating point reg */
@@ -248,11 +248,11 @@ struct Ins {
 
 struct Phi {
 	Ref to;
+	short cls;
+	int visit;
+	uint narg;
 	Ref *arg;
 	Blk **blk;
-	uint narg;
-	short cls;
-	uint visit:1;
 	Phi *link;
 };
 
@@ -282,7 +282,7 @@ struct Blk {
 	BSet in[1], out[1], gen[1];
 	int nlive[2];
 	int loop;
-	char name[NString];
+	char *name;
 };
 
 struct Use {
@@ -301,8 +301,10 @@ struct Use {
 
 struct Sym {
 	enum {
-		SGlo,
-		SThr,
+		SGlo  = 0, /* direct access */
+		SThr  = 1, /* local-exec TLS */
+		SExt  = 2, /* GOT/PLT access */
+		SExtThr = SExt|SThr, /* initial-exec TLS */
 	} type;
 	uint32_t id;
 };
@@ -342,7 +344,7 @@ struct Alias {
 };
 
 struct Tmp {
-	char name[NString];
+	char *name;
 	Ins *def;
 	Use *use;
 	uint ndef, nuse;
@@ -421,12 +423,12 @@ struct Fn {
 	char vararg;
 	char dynalloc;
 	char leaf;
-	char name[NString];
+	char *name;
 	Lnk lnk;
 };
 
 struct Typ {
-	char name[NString];
+	char *name;
 	char isdark;
 	char isunion;
 	int align;
@@ -497,7 +499,7 @@ void vfree(void *);
 void vgrow(void *, ulong);
 void addins(Ins **, uint *, Ins *);
 void addbins(Ins **, uint *, Blk *);
-void strf(char[NString], char *, ...);
+char *strf(Pool, char *, ...);
 uint32_t intern(char *);
 char *str(uint32_t);
 int argcls(Ins *, int);
@@ -509,7 +511,6 @@ void emiti(Ins);
 void idup(Blk *, Ins *, ulong);
 Ins *icpy(Ins *, Ins *, ulong);
 int cmpop(int);
-int cmpneg(int);
 int cmpwlneg(int);
 int clsmerge(short *, short);
 int phicls(int, Tmp *);
@@ -644,3 +645,4 @@ int stashbits(bits, int);
 void elf_emitfnfin(char *, FILE *);
 void elf_emitfin(FILE *);
 void macho_emitfin(FILE *);
+void pe_emitfin(FILE *);

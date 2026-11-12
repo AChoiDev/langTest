@@ -10,24 +10,24 @@ struct E {
 };
 
 #define CMP(X) \
-	X(Cieq,       "eq") \
-	X(Cine,       "ne") \
-	X(Cisge,      "ge") \
-	X(Cisgt,      "gt") \
-	X(Cisle,      "le") \
-	X(Cislt,      "lt") \
-	X(Ciuge,      "cs") \
-	X(Ciugt,      "hi") \
-	X(Ciule,      "ls") \
-	X(Ciult,      "cc") \
-	X(NCmpI+Cfeq, "eq") \
-	X(NCmpI+Cfge, "ge") \
-	X(NCmpI+Cfgt, "gt") \
-	X(NCmpI+Cfle, "ls") \
-	X(NCmpI+Cflt, "mi") \
-	X(NCmpI+Cfne, "ne") \
-	X(NCmpI+Cfo,  "vc") \
-	X(NCmpI+Cfuo, "vs")
+	X(Cieq,       "eq", "ne") \
+	X(Cine,       "ne", "eq") \
+	X(Cisge,      "ge", "lt") \
+	X(Cisgt,      "gt", "le") \
+	X(Cisle,      "le", "gt") \
+	X(Cislt,      "lt", "ge") \
+	X(Ciuge,      "cs", "cc") \
+	X(Ciugt,      "hi", "ls") \
+	X(Ciule,      "ls", "hi") \
+	X(Ciult,      "cc", "cs") \
+	X(NCmpI+Cfeq, "eq", "ne") \
+	X(NCmpI+Cfge, "ge", "lt") \
+	X(NCmpI+Cfgt, "gt", "le") \
+	X(NCmpI+Cfle, "ls", "hi") \
+	X(NCmpI+Cflt, "mi", "pl") \
+	X(NCmpI+Cfne, "ne", "eq") \
+	X(NCmpI+Cfo,  "vc", "vs") \
+	X(NCmpI+Cfuo, "vs", "vc")
 
 enum {
 	Ki = -1, /* matches Kw and Kl */
@@ -102,7 +102,7 @@ static struct {
 	{ Oacmn,   Ki, "cmn %0, %1" },
 	{ Oafcmp,  Ka, "fcmpe %0, %1" },
 
-#define X(c, str) \
+#define X(c, str, _) \
 	{ Oflag+c, Ki, "cset %=, " str },
 	CMP(X)
 #undef X
@@ -278,6 +278,10 @@ loadaddr(Con *c, char *rn, E *e)
 			s = "\tadrp\tR, SO\n"
 			    "\tadd\tR, R, #:lo12:SO\n";
 		break;
+	case SExtThr:
+		if (!T.apple)
+			die("extern thread unavailable on arm64");
+		/* fall through */
 	case SThr:
 		if (T.apple)
 			s = "\tadrp\tR, S@tlvppage\n"
@@ -286,6 +290,15 @@ loadaddr(Con *c, char *rn, E *e)
 			s = "\tmrs\tR, tpidr_el0\n"
 			    "\tadd\tR, R, #:tprel_hi12:SO, lsl #12\n"
 			    "\tadd\tR, R, #:tprel_lo12_nc:SO\n";
+		break;
+	case SExt:
+		assert(c->bits.i == 0);
+		if (T.apple)
+			s = "\tadrp\tR, S@gotpage\n"
+			    "\tldr\tR, [R, S@gotpageoff]\n";
+		else
+			s = "\tadrp\tR, :got:S\n"
+			    "\tldr\tR, [R, #:got_lo12:S]\n";
 		break;
 	}
 
@@ -383,12 +396,12 @@ emitins(Ins *i, E *e)
 			t = T.apple ? -1 : R18;
 			if (fixarg(&i->arg[1], storesz(i), t, e)) {
 				if (req(i->arg[0], TMP(IP1))) {
+					t = i->op == Ostorel || i->op == Ostored;
 					fprintf(e->f,
 						"\tfmov\t%c31, %c17\n",
-						"ds"[i->cls == Kw],
-						"xw"[i->cls == Kw]);
+						"sd"[t], "wx"[t]);
 					i->arg[0] = TMP(V31);
-					i->op = Ostores + (i->cls-Kw);
+					i->op = t ? Ostored : Ostores;
 				}
 				fixarg(&i->arg[1], storesz(i), IP1, e);
 			}
@@ -468,7 +481,7 @@ emitins(Ins *i, E *e)
 			goto Table;
 		c = &e->fn->con[i->arg[0].val];
 		if (c->type != CAddr
-		|| c->sym.type != SGlo
+		|| (c->sym.type & SThr)
 		|| c->bits.i)
 			die("invalid call argument");
 		l = str(c->sym.id);
@@ -532,8 +545,8 @@ framelayout(E *e)
 void
 arm64_emitfn(Fn *fn, FILE *out)
 {
-	static char *ctoa[] = {
-	#define X(c, s) [c] = s,
+	static char *ctoa[][2] = {
+	#define X(c, s, n) [c] = {s, n},
 		CMP(X)
 	#undef X
 	};
@@ -664,11 +677,12 @@ arm64_emitfn(Fn *fn, FILE *out)
 				t = b->s1;
 				b->s1 = b->s2;
 				b->s2 = t;
+				n = 0;
 			} else
-				c = cmpneg(c);
+				n = 1;
 			fprintf(e->f,
 				"\tb%s\t%s%d\n",
-				ctoa[c], T.asloc, id0+b->s2->id
+				ctoa[c][n], T.asloc, id0+b->s2->id
 			);
 			goto Jmp;
 		}

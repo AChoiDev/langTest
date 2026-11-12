@@ -10,7 +10,7 @@ char debug['Z'+1] = {
 	['M'] = 0, /* memory optimization */
 	['N'] = 0, /* ssa construction */
 	['C'] = 0, /* copy elimination */
-	['F'] = 0, /* constant folding */
+	['G'] = 0, /* gvn/gcm */
 	['K'] = 0, /* if-conversion */
 	['A'] = 0, /* abi lowering */
 	['I'] = 0, /* instruction selection */
@@ -21,6 +21,7 @@ char debug['Z'+1] = {
 
 extern Target T_amd64_sysv;
 extern Target T_amd64_apple;
+extern Target T_amd64_win;
 extern Target T_arm64;
 extern Target T_arm64_apple;
 extern Target T_rv64;
@@ -28,6 +29,7 @@ extern Target T_rv64;
 static Target *tlist[] = {
 	&T_amd64_sysv,
 	&T_amd64_apple,
+	&T_amd64_win,
 	&T_arm64,
 	&T_arm64_apple,
 	&T_rv64,

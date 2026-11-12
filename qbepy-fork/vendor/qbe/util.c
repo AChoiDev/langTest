@@ -193,14 +193,21 @@ addbins(Ins **pvins, uint *pnins, Blk *b)
 		addins(pvins, pnins, i);
 }
 
-void
-strf(char str[NString], char *s, ...)
+char *
+strf(Pool pool, char *s, ...)
 {
 	va_list ap;
+	int n;
+	char *p;
 
 	va_start(ap, s);
-	vsnprintf(str, NString, s, ap);
+	n = vsnprintf(NULL, 0, s, ap);
 	va_end(ap);
+	p = (pool == PFn ? alloc : emalloc)(n + 1);
+	va_start(ap, s);
+	vsnprintf(p, n + 1, s, ap);
+	va_end(ap);
+	return p;
 }
 
 uint32_t
@@ -364,33 +371,26 @@ icpy(Ins *d, Ins *s, ulong n)
 }
 
 static int cmptab[][2] ={
-	             /* negation    swap */
-	[Ciule]      = {Ciugt,      Ciuge},
-	[Ciult]      = {Ciuge,      Ciugt},
-	[Ciugt]      = {Ciule,      Ciult},
-	[Ciuge]      = {Ciult,      Ciule},
-	[Cisle]      = {Cisgt,      Cisge},
-	[Cislt]      = {Cisge,      Cisgt},
-	[Cisgt]      = {Cisle,      Cislt},
-	[Cisge]      = {Cislt,      Cisle},
-	[Cieq]       = {Cine,       Cieq},
-	[Cine]       = {Cieq,       Cine},
-	[NCmpI+Cfle] = {NCmpI+Cfgt, NCmpI+Cfge},
-	[NCmpI+Cflt] = {NCmpI+Cfge, NCmpI+Cfgt},
-	[NCmpI+Cfgt] = {NCmpI+Cfle, NCmpI+Cflt},
-	[NCmpI+Cfge] = {NCmpI+Cflt, NCmpI+Cfle},
-	[NCmpI+Cfeq] = {NCmpI+Cfne, NCmpI+Cfeq},
-	[NCmpI+Cfne] = {NCmpI+Cfeq, NCmpI+Cfne},
-	[NCmpI+Cfo]  = {NCmpI+Cfuo, NCmpI+Cfo},
-	[NCmpI+Cfuo] = {NCmpI+Cfo,  NCmpI+Cfuo},
+	             /* negation swap */
+	[Ciule]      = {Ciugt,   Ciuge},
+	[Ciult]      = {Ciuge,   Ciugt},
+	[Ciugt]      = {Ciule,   Ciult},
+	[Ciuge]      = {Ciult,   Ciule},
+	[Cisle]      = {Cisgt,   Cisge},
+	[Cislt]      = {Cisge,   Cisgt},
+	[Cisgt]      = {Cisle,   Cislt},
+	[Cisge]      = {Cislt,   Cisle},
+	[Cieq]       = {Cine,    Cieq},
+	[Cine]       = {Cieq,    Cine},
+	[NCmpI+Cfle] = {-1,      NCmpI+Cfge},
+	[NCmpI+Cflt] = {-1,      NCmpI+Cfgt},
+	[NCmpI+Cfgt] = {-1,      NCmpI+Cflt},
+	[NCmpI+Cfge] = {-1,      NCmpI+Cfle},
+	[NCmpI+Cfeq] = {-1,      NCmpI+Cfeq},
+	[NCmpI+Cfne] = {-1,      NCmpI+Cfne},
+	[NCmpI+Cfo]  = {-1,      NCmpI+Cfo},
+	[NCmpI+Cfuo] = {-1,      NCmpI+Cfuo},
 };
-
-int
-cmpneg(int c)
-{
-	assert(0 <= c && c < NCmp);
-	return cmptab[c][0];
-}
 
 int
 cmpop(int c)
@@ -403,9 +403,9 @@ int
 cmpwlneg(int op)
 {
 	if (INRANGE(op, Ocmpw, Ocmpw1))
-		return cmpneg(op - Ocmpw) + Ocmpw;
+		return cmptab[op - Ocmpw][0] + Ocmpw;
 	if (INRANGE(op, Ocmpl, Ocmpl1))
-		return cmpneg(op - Ocmpl) + Ocmpl;
+		return cmptab[op - Ocmpl][0] + Ocmpl;
 	die("not a wl comparison");
 }
 
@@ -471,7 +471,7 @@ newtmp(char *prfx, int k,  Fn *fn)
 	vgrow(&fn->tmp, fn->ntmp);
 	memset(&fn->tmp[t], 0, sizeof(Tmp));
 	if (prfx)
-		strf(fn->tmp[t].name, "%s.%d", prfx, ++n);
+		fn->tmp[t].name = strf(PFn, "%s.%d", prfx, ++n);
 	fn->tmp[t].cls = k;
 	fn->tmp[t].slot = -1;
 	fn->tmp[t].nuse = +1;

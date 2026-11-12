@@ -160,6 +160,7 @@ emitfin(FILE *f, char *sec[3])
 	Asmbits *b;
 	int lg, i;
 	union { int32_t i; float f; } u;
+	union { int64_t i; double f; } uu;
 
 	if (!stash)
 		return;
@@ -178,13 +179,13 @@ emitfin(FILE *f, char *sec[3])
 						"\n\t.quad %"PRId64
 						"\n\t.quad 0\n\n",
 						(int64_t)b->n);
-				else if (lg == 3)
+				else if (lg == 3) {
+					uu.i = b->n;
 					fprintf(f,
 						"\n\t.quad %"PRId64
 						" /* %f */\n\n",
-						(int64_t)b->n,
-						*(double *)&b->n);
-				else if (lg == 2) {
+						uu.i, uu.f);
+				} else if (lg == 2) {
 					u.i = b->n;
 					fprintf(f,
 						"\n\t.int %"PRId32
@@ -221,8 +222,16 @@ macho_emitfin(FILE *f)
 	static char *sec[3] = {
 		"__TEXT,__literal4,4byte_literals",
 		"__TEXT,__literal8,8byte_literals",
-		".abort \"unreachable\"",
+		"__TEXT,__literal16,16byte_literals",
 	};
+
+	emitfin(f, sec);
+}
+
+void
+pe_emitfin(FILE *f)
+{
+	static char *sec[3] = { ".rodata", ".rodata", ".rodata" };
 
 	emitfin(f, sec);
 }

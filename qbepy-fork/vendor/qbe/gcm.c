@@ -452,7 +452,7 @@ gcm(Fn *fn)
 	sink(fn);
 	filluse(fn);
 	schedblk(fn);
-
+	
 	if (debug['G']) {
 		fprintf(stderr, "\n> After GCM:\n");
 		printfn(fn, stderr);
