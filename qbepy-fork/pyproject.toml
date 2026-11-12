@@ -1,0 +1,60 @@
+[project]
+name = "qbepy"
+version = "2026.2.2"
+description = "Python bindings for QBE (Quite Bare Engine) compiler backend"
+readme = "README.md"
+license = "MIT"
+authors = [
+    { name = "Stefane Fermigier", email = "sf@abilian.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "cffi>=1.16.0",
+]
+keywords = ["compiler", "qbe", "code-generation", "assembly"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Compilers",
+]
+
+[project.urls]
+# Homepage = "https://github.com/abilian/qbepy"
+# Repository = "https://github.com/abilian/qbepy"
+Homepage = "https://git.sr.ht/~sfermigier/qbepy"
+Repository = "https://git.sr.ht/~sfermigier/qbepy"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.19.1",
+    "nox>=2025.11.12",
+    "pre-commit>=4.5.1",
+    "pyrefly>=0.51.1",
+    "pytest>=8.0",
+    "pytest-cov>=7.0.0",
+    "pytest-doctestplus>=1.0.0",
+    "ruff>=0.15.0",
+    "ty>=0.0.15",
+]
+
+[build-system]
+requires = ["setuptools>=61", "cffi>=1.16.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["qbepy", "qbepy.ir"]
+package-dir = {"" = "src"}
+
+[tool.setuptools.package-data]
+"*" = ["py.typed"]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q"
+testpaths = [
+    "tests",
+    "README.md",
+]
+doctest_optionflags = "NORMALIZE_WHITESPACE ELLIPSIS"

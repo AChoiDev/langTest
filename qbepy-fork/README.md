@@ -1,0 +1,371 @@
+# qbepy
+
+Python bindings for [QBE](https://c9x.me/compile/), a minimalist compiler backend.
+
+QBE is a small, fast compiler backend that takes an SSA-based intermediate language (IL) and produces native machine code for multiple architectures. qbepy provides Python bindings via CFFI, allowing you to compile QBE IL directly from Python without spawning subprocesses.
+
+## Features
+
+- **Direct FFI bindings** - No subprocess overhead; QBE is compiled as a Python extension
+- **Multiple targets** - Supports amd64 (System V and Apple ABIs), ARM64, and RISC-V 64
+- **Pythonic IR builder** - Construct QBE IL programmatically with a clean API
+- **Error handling** - QBE errors are raised as Python exceptions
+- **Vendored QBE** - QBE source is included and built automatically during installation
+
+## Installation
+
+```bash
+pip install qbepy
+# or
+uv add qbepy
+```
+
+Or from source:
+
+```bash
+git clone https://github.com/user/qbepy.git
+cd qbepy
+uv sync
+```
+
+## Quick Start
+
+### Compiling Raw IL
+
+```python
+>>> import qbepy
+>>>
+>>> # QBE IL for a simple add function
+>>> il = """
+... export function w $add(w %a, w %b) {
+... @start
+...     %r =w add %a, %b
+...     ret %r
+... }
+... """
+>>>
+>>> # Compile to assembly
+>>> asm = qbepy.compile_il(il)
+>>> print(asm)  # doctest: +SKIP
+```
+
+The output will contain assembly code for the target platform. For example, on ARM64 Apple:
+
+```asm
+.text
+.balign 4
+.globl _add
+_add:
+    hint    #34
+    stp     x29, x30, [sp, -16]!
+    mov     x29, sp
+    add     w0, w0, w1
+    ldp     x29, x30, [sp], 16
+    ret
+```
+
+### Using the IR Builder
+
+```python
+>>> import qbepy
+>>> from qbepy import Module, Function, DataDef, W, L
+>>> from qbepy.ir import BinaryOp, Call, Return, Temporary, Global, IntConst
+>>>
+>>> # Create a module
+>>> mod = Module()
+>>>
+>>> # Add a string constant
+>>> mod.add_data(
+...     DataDef("greeting")
+...     .add_string("Hello, World!")
+...     .add_bytes(0)  # null terminator
+... )  # doctest: +ELLIPSIS, +SKIP
+>>>
+>>> # Create main function
+>>> func = Function("main", W, export=True)
+>>> block = func.add_block("start")
+>>>
+>>> # Call puts($greeting)
+>>> r = func.new_temp("r")
+>>> block.instructions.append(
+...     Call(Global("puts"), [(L, Global("greeting"))], r, W)
+... )
+>>> block.terminator = Return(IntConst(0))
+>>>
+>>> mod.add_function(func)  # doctest: +SKIP
+>>>
+>>> # Compile to assembly
+>>> asm = qbepy.compile_module(mod)  # doctest: +SKIP
+>>> print(asm)  # doctest: +SKIP
+```
+
+### Specifying a Target
+
+```python
+>>> # Compile for x86-64 System V ABI
+>>> asm = qbepy.compile_il(il, target="amd64_sysv")
+>>> len(asm) > 0  # Verify compilation succeeded
+True
+>>>
+>>> # Or use the Compiler class
+>>> compiler = qbepy.Compiler(target="arm64")
+>>> asm = compiler.compile(il)
+>>> len(asm) > 0  # Verify compilation succeeded
+True
+>>>
+>>> # Available targets
+>>> targets = qbepy.Compiler.get_available_targets()
+>>> 'amd64_sysv' in targets
+True
+>>> 'arm64' in targets
+True
+>>>
+>>> # Get default target for current platform
+>>> default_target = qbepy.Compiler.get_default_target()
+>>> default_target in targets
+True
+
+## API Reference
+
+### Compiler
+
+```python
+>>> from qbepy import Compiler, compile_il, compile_module
+>>>
+>>> # Create a compiler instance
+>>> compiler = Compiler(target=None)  # None = platform default
+>>> compiler is not None
+True
+>>>
+>>> # Compile IL string to assembly
+>>> asm = compiler.compile(il)
+>>> len(asm) > 0
+True
+>>>
+>>> # Change target
+>>> compiler.set_target("amd64_sysv")
+>>> compiler.target
+'amd64_sysv'
+>>>
+>>> # Convenience functions
+>>> asm = compile_il(il, target=None)
+>>> len(asm) > 0
+True
+
+### Types
+
+```python
+>>> from qbepy import W, L, S, D, BaseType, ExtType, AggregateType
+>>>
+>>> # Base types
+>>> W  # word (32-bit integer)
+<BaseType.WORD: 'w'>
+>>> L  # long (64-bit integer)
+<BaseType.LONG: 'l'>
+>>> S  # single (32-bit float)
+<BaseType.SINGLE: 's'>
+>>> D  # double (64-bit float)
+<BaseType.DOUBLE: 'd'>
+>>>
+>>> # Extended types (for memory operations)
+>>> ExtType.BYTE
+<ExtType.BYTE: 'b'>
+>>> ExtType.WORD
+<ExtType.WORD: 'w'>
+>>>
+>>> # Aggregate types (structs)
+>>> point = AggregateType("point", [
+...     (ExtType.WORD, 1),  # x: 1 word
+...     (ExtType.WORD, 1),  # y: 1 word
+... ])
+>>> point.name
+'point'
+
+### Values
+
+```python
+>>> from qbepy.ir import Temporary, Global, Label, IntConst, FloatConst
+>>>
+>>> Temporary("x")      # %x - SSA temporary
+Temporary(name='x')
+>>> Global("main")      # $main - global symbol
+Global(name='main')
+>>> Label("loop")       # @loop - block label
+Label(name='loop')
+>>> IntConst(42)        # 42 - integer constant
+IntConst(value=42)
+>>> FloatConst(3.14)    # d_3.14 - double constant
+FloatConst(value=3.14, is_single=False)
+>>> FloatConst(3.14, is_single=True)  # s_3.14 - float constant
+FloatConst(value=3.14, is_single=True)
+
+### Instructions
+
+```python
+>>> from qbepy.ir import (
+...     BinaryOp,    # add, sub, mul, div, rem, or, xor, and, sar, shr, shl
+...     UnaryOp,     # neg, copy
+...     Copy,        # copy value
+...     Load,        # load from memory
+...     Store,       # store to memory
+...     Alloc,       # stack allocation
+...     Call,        # function call
+...     Comparison,  # ceqw, cnew, csltw, etc.
+...     Conversion,  # extsw, truncd, stosi, cast, etc.
+...     Phi,         # SSA phi node
+... )
+>>>
+>>> # Examples
+>>> from qbepy.ir import Temporary, Global
+>>> BinaryOp("add", Temporary("r"), W, Temporary("a"), Temporary("b"))
+BinaryOp(op='add', result=Temporary(name='r'), result_type=<BaseType.WORD: 'w'>, left=Temporary(name='a'), right=Temporary(name='b'))
+>>> Load(Temporary("v"), W, Temporary("ptr"))
+Load(result=Temporary(name='v'), result_type=<BaseType.WORD: 'w'>, address=Temporary(name='ptr'), load_type='load')
+>>> Store("storew", Temporary("v"), Temporary("ptr"))
+Store(store_type='storew', value=Temporary(name='v'), address=Temporary(name='ptr'))
+>>> Call(Global("printf"), [(L, Global("fmt"))], Temporary("r"), W)
+Call(target=Global(name='printf'), args=[(<BaseType.LONG: 'l'>, Global(name='fmt'))], result=Temporary(name='r'), result_type=<BaseType.WORD: 'w'>, is_variadic=False)
+
+### Control Flow
+
+```python
+>>> from qbepy.ir import Jump, Branch, Return, Halt
+>>>
+>>> Jump(Label("next"))                           # jmp @next
+Jump(target=Label(name='next'))
+>>> Branch(Temporary("c"), Label("t"), Label("f")) # jnz %c, @t, @f
+Branch(condition=Temporary(name='c'), if_true=Label(name='t'), if_false=Label(name='f'))
+>>> Return(Temporary("r"))                         # ret %r
+Return(value=Temporary(name='r'))
+>>> Return(IntConst(0))                           # ret 0
+Return(value=IntConst(value=0))
+>>> Return()                                       # ret (void)
+Return(value=None)
+>>> Halt()                                         # hlt (unreachable)
+Halt()
+
+### Building Modules
+
+```python
+>>> from qbepy import Module, Function, Block, DataDef
+>>>
+>>> # Module - container for types, data, and functions
+>>> mod = Module()
+>>> len(mod.functions)
+0
+>>>
+>>> # Function
+>>> func = Function("test", W, params=[(W, "a"), (L, "b")], export=True)
+>>> block = func.add_block("start")
+>>> temp = func.new_temp("x")  # creates unique temporary
+>>> temp.name
+'x.1'
+>>>
+>>> # DataDef
+>>> data = (DataDef("test_data", export=True, align=8)
+...     .add_string("hello")
+...     .add_bytes(0)
+...     .add_words(1, 2, 3)
+...     .add_longs(0x1234567890)
+...     .add_zero(16))
+>>> data.name
+'test_data'
+
+## Supported Targets
+
+| Target | Description |
+|--------|-------------|
+| `amd64_sysv` | x86-64 with System V ABI (Linux, BSD) |
+| `amd64_apple` | x86-64 with Apple ABI (macOS Intel) |
+| `arm64` | ARM64 with standard ABI (Linux) |
+| `arm64_apple` | ARM64 with Apple ABI (macOS Apple Silicon) |
+| `rv64` | RISC-V 64-bit |
+
+## QBE IL Reference
+
+QBE uses a simple SSA-based intermediate language. For the complete specification, see the [QBE IL documentation](https://c9x.me/compile/doc/il.html).
+
+### Basic IL Structure
+
+```
+# Type definitions
+type :point = { w, w }
+
+# Data definitions
+data $message = { b "Hello", b 0 }
+
+# Function definitions
+export function w $main() {
+@start
+    %x =w copy 42
+    ret %x
+}
+```
+
+### IL Basics
+
+- Temporaries: `%name` (SSA values)
+- Globals: `$name` (functions and data)
+- Labels: `@name` (basic blocks)
+- Types: `w` (word), `l` (long), `s` (single), `d` (double)
+
+## Error Handling
+
+```python
+>>> from qbepy import CompilationError, compile_il
+>>>
+>>> try:
+...     asm = compile_il("invalid IL code")
+... except CompilationError as e:
+...     print(f"Compilation failed: {e}")
+Compilation failed: unknown keyword invalid
+
+## Project Structure
+
+```
+qbepy/
+├── src/qbepy/
+│   ├── __init__.py      # Public API exports
+│   ├── _ffi.py          # Low-level CFFI bindings
+│   ├── compiler.py      # Compiler class
+│   ├── errors.py        # Exception types
+│   └── ir/              # IR builder module
+│       ├── types.py     # Type definitions
+│       ├── values.py    # Value types
+│       ├── instructions.py  # Instructions
+│       ├── control.py   # Control flow
+│       └── builder.py   # Module, Function, Block, DataDef
+├── csrc/
+│   ├── qbepy_wrapper.c  # C wrapper with error handling
+│   └── qbepy_wrapper.h
+├── vendor/qbe/          # Vendored QBE source
+├── build_ffi.py         # CFFI build script
+└── tests/               # Test suite
+```
+
+## How It Works
+
+qbepy vendors the QBE compiler source and builds it as a Python extension using CFFI. The main challenge is that QBE's error handling uses `exit()`, which would terminate the Python process. qbepy solves this by:
+
+1. Redirecting QBE's `err()` function to a custom handler using preprocessor macros
+2. Using `setjmp`/`longjmp` to catch errors and return control to Python
+3. Converting errors to Python exceptions
+
+This allows QBE to be used as a library rather than a standalone compiler.
+
+## License
+
+qbepy is released under the MIT License.
+
+QBE is developed by Quentin Carbonneaux and is also MIT licensed. See [vendor/qbe/LICENSE](vendor/qbe/LICENSE).
+
+## Credits
+
+- [QBE](https://c9x.me/compile/) - The compiler backend by Quentin Carbonneaux
+- [CFFI](https://cffi.readthedocs.io/) - C Foreign Function Interface for Python
+
+## See Also
+
+- [QBE Documentation](https://c9x.me/compile/doc/il.html) - Complete IL specification
+- [cproc](https://sr.ht/~mcf/cproc/) - A C11 compiler using QBE as backend
+- [Hare](https://harelang.org/) - A systems programming language using QBE
