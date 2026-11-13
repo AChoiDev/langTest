@@ -292,13 +292,12 @@ loadaddr(Con *c, char *rn, E *e)
 			    "\tadd\tR, R, #:tprel_lo12_nc:SO\n";
 		break;
 	case SExt:
-		assert(c->bits.i == 0);
 		if (T.apple)
-			s = "\tadrp\tR, S@gotpage\n"
-			    "\tldr\tR, [R, S@gotpageoff]\n";
+			s = "\tadrp\tR, S@gotpageO\n"
+			    "\tldr\tR, [R, S@gotpageoffO]\n";
 		else
-			s = "\tadrp\tR, :got:S\n"
-			    "\tldr\tR, [R, #:got_lo12:S]\n";
+			s = "\tadrp\tR, :got:SO\n"
+			    "\tldr\tR, [R, #:got_lo12:SO]\n";
 		break;
 	}
 
@@ -396,12 +395,12 @@ emitins(Ins *i, E *e)
 			t = T.apple ? -1 : R18;
 			if (fixarg(&i->arg[1], storesz(i), t, e)) {
 				if (req(i->arg[0], TMP(IP1))) {
-					t = i->op == Ostorel || i->op == Ostored;
 					fprintf(e->f,
 						"\tfmov\t%c31, %c17\n",
-						"sd"[t], "wx"[t]);
+						"ds"[i->cls == Kw],
+						"xw"[i->cls == Kw]);
 					i->arg[0] = TMP(V31);
-					i->op = t ? Ostored : Ostores;
+					i->op = Ostores + (i->cls-Kw);
 				}
 				fixarg(&i->arg[1], storesz(i), IP1, e);
 			}

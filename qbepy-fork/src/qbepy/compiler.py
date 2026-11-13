@@ -30,7 +30,7 @@ class Compiler:
         >>> asm = compiler.compile(il)
     """
 
-    TARGETS: list[str] = ["amd64_sysv", "amd64_apple", "arm64", "arm64_apple", "rv64"]
+    TARGETS: list[str] = ["amd64_sysv", "amd64_apple", "arm64", "arm64_apple", "rv64", "amd64_win"]
 
     def __init__(self, target: Target | None = None):
         """Initialize compiler.
