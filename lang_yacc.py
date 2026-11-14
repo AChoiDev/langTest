@@ -79,17 +79,24 @@ class Bool(Expr):
 @dataclass
 class StatementVariable:
     name: str
-    type: Ty
+    type: Ty | None
 
 @dataclass
 class Statement:
     expr: Expr
     variable: StatementVariable | None
 
-@dataclass
-class Function:
-    name: str
-    statements: list[Statement]
+def p_infer_assignment_statement(p):
+    '''statement : ID COLON EQUAL expression SEMICOLON'''
+    p[0] = Statement(p[4], StatementVariable(p[1], TyVar()))
+
+def p_assignment_statement(p):
+    '''statement : ID ID EQUAL expression SEMICOLON'''
+    p[0] = Statement(p[4], StatementVariable(p[1], TyCon(p[2])))
+
+def p_reassignment_statement(p):
+    '''statement : ID EQUAL expression SEMICOLON'''
+    p[0] = Statement(p[3], StatementVariable(p[0], None))
 
 def p_expr_bang(p):
     'expression : BANG expression'
@@ -135,13 +142,54 @@ def p_factor_expr(p):
     'expression : L_PAREN expression R_PAREN'
     p[0] = Group(p[2], TyVar())
 
-def p_infer_assignment_statement(p):
-    '''statement : ID COLON EQUAL expression SEMICOLON'''
-    p[0] = Statement(p[4], StatementVariable(p[1], TyVar()))
 
-def p_assignment_statement(p):
-    '''statement : ID ID EQUAL expression SEMICOLON'''
-    p[0] = Statement(p[4], StatementVariable(p[1], TyCon(p[2])))
+
+@dataclass
+class ElseBlock:
+    else_block: list[Statement]
+    # TODO handle type variable for else block
+
+def p_else_block(p):
+    '''else_block : KEY_else L_CURLY statement_list R_CURLY
+                  | KEY_else L_CURLY R_CURLY'''
+
+    if len(p) == 5:
+        p[0] = ElseBlock(p[3])
+    elif len(p) == 4:
+        p[0] = ElseBlock([])
+    else:
+        raise Exception("Unexpected length of tokens")
+
+@dataclass
+class IfExpr(Expr):
+    condition: Expr
+    if_block_statements: list[Statement]
+    else_block: ElseBlock | None
+    type: Ty
+
+def p_if_expr(p):
+    '''expression : KEY_if expression L_CURLY statement_list R_CURLY else_block
+                  | KEY_if expression L_CURLY statement_list R_CURLY
+                  | KEY_if expression L_CURLY R_CURLY else_block
+                  | KEY_if expression L_CURLY R_CURLY'''
+
+    if len(p) == 7:
+        # if statement list, else block case
+        p[0] = IfExpr(p[2], p[4], p[6], TyVar())
+    elif len(p) == 6 and not isinstance(p[5], ElseBlock):
+        # if statement list, no else block case
+        print(p[5])
+        p[0] = IfExpr(p[2], p[4], None, TyVar())
+    elif len(p) == 6 and isinstance(p[5], ElseBlock):
+        # no if statement list, else block case
+        p[0] = IfExpr(p[2], [], p[5], TyVar())
+    elif len(p) == 5:
+        # no if statement list, no else block case
+        p[0] = IfExpr(p[2], [], None, TyVar())
+    else:
+        raise Exception("Unexpected length of tokens")
+
+
 
 def p_expr_statement(p):
     'statement : expression SEMICOLON'
@@ -156,6 +204,11 @@ def p_statement_list(p):
     else:
         p[0] = p[1] + [p[2]]
 
+
+@dataclass
+class Function:
+    name: str
+    statements: list[Statement]
 
 def p_function(p):
     '''function : ID KEY_fn L_PAREN R_PAREN L_CURLY R_CURLY SEMICOLON
@@ -172,8 +225,8 @@ def p_function(p):
 
 # Error rule for syntax errors
 def p_error(p):
-    print(p)
-    print("Syntax error in input!")
+    print("Unexpected item: ", p)
+    print("Syntax error while building ast!")
 
 # Build the parser
 parser = yacc.yacc()

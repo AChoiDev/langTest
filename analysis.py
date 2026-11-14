@@ -1,4 +1,4 @@
-from lang_yacc import Statement, TyVar, BinOp, Number, Group, TyCon, Ty, Function, IdExpr
+from lang_yacc import Bool, ElseBlock, IfExpr, Statement, TyVar, BinOp, Number, Group, TyCon, Ty, Function, IdExpr
 
 def analyze(ast):
     constraints = []
@@ -14,44 +14,61 @@ def analyze(ast):
 
         node_ty = type(node)
 
-        if node_ty is Function:
+        if isinstance(node, Function):
             for statement in node.statements:
                 traverse(statement)
-        elif node_ty is Statement:
+        elif isinstance(node, Statement):
             if node.variable != None:
                 if type(node.variable.type) == TyVar:
                     type_vars.append(node.variable.type)
-                constraints.append((node.variable.type, node.expr.type))
+                constraints.append((node.variable.type, node.expr.type)) # type: ignore
 
+                # Currently assume all variables are assigned and declared once
                 assert function_vars.get(node.variable.name) == None
                 function_vars[node.variable.name] = node.variable.type
             traverse(node.expr)
-        elif node_ty is BinOp:
+        elif isinstance(node, BinOp):
             if type(node.type) == TyVar:
                 type_vars.append(node.type)
-            constraints.append((node.type, node.left.type))
-            constraints.append((node.type, node.right.type))
+            constraints.append((node.type, node.left.type)) # type: ignore
+            constraints.append((node.type, node.right.type)) # type: ignore
             traverse(node.left)
             traverse(node.right)
-        elif node_ty is Number:
+        elif isinstance(node, Number):
             if type(node.type) == TyVar:
                 type_vars.append(node.type)
                 default_constraints.append((node.type, TyCon('Int')))
-        elif node_ty is Group:
+        elif isinstance(node, Bool):
+            pass
+        elif isinstance(node, Group):
             if type(node.type) == TyVar:
                 type_vars.append(node.type)
-            constraints.append((node.type, node.value.type))
+            constraints.append((node.type, node.value.type)) # type: ignore
             traverse(node.value)
-        elif node_ty is IdExpr:
+        elif isinstance(node, IdExpr):
             decl_ty = function_vars.get(node.value)
             if decl_ty != None:
                 constraints.append((decl_ty, node.type))
             else:
                 raise Exception('Declaration missing')
+        elif isinstance(node, IfExpr):
+            # TODO look into whether we can do a constraint
+            # between the condition expression and Bool
 
+            traverse(node.condition)
+            for statement in node.if_block_statements:
+                traverse(statement)
+                
+            if node.else_block != None:
+                traverse(node.else_block)
+
+        elif isinstance(node, ElseBlock):
+            for statement in node.else_block:
+                traverse(statement)
         else:
+            print('unknown node: ')
             print(node)
-            raise "unknown ast type detected"
+            raise Exception("unknown ast type detected")
     
     traverse(ast)
 
@@ -89,7 +106,7 @@ def analyze(ast):
 
             substitutions[left.id] = right
         else:
-            raise 'impossible'
+            raise Exception('impossible')
 
     # Apply base constraints
     while len(constraints) > 0:
@@ -105,6 +122,8 @@ def analyze(ast):
                 return get_base_type(subst)
             else:
                 return ty
+        else:
+            raise Exception('unhandled variant of Ty')
 
     # Apply default constraints to type variables that don't map to type constructors
     for (ty_var, ty_con) in default_constraints:
@@ -128,6 +147,8 @@ def analyze(ast):
 
     assert type(ast) is Function
 
+
+    '''
     # Maps variable names to values
     environment = {}
 
@@ -157,8 +178,9 @@ def analyze(ast):
             return val
         else:
             raise Exception('unknown node type')
+    '''
         
-    evaluate(ast)
-    print(environment)
+    # evaluate(ast)
+    # print(environment)
 
     # for statement in ast.statements:
