@@ -36,6 +36,7 @@ static THREAD_LOCAL size_t qbepy_output_cap = 0;
 /* External target definitions */
 extern Target T_amd64_sysv;
 extern Target T_amd64_apple;
+extern Target T_amd64_win;
 extern Target T_arm64;
 extern Target T_arm64_apple;
 extern Target T_rv64;
@@ -55,6 +56,7 @@ char *dbgfile;
 static Target* qbepy_targets[] = {
     &T_amd64_sysv,
     &T_amd64_apple,
+    &T_amd64_win,
     &T_arm64,
     &T_arm64_apple,
     &T_rv64,
@@ -164,7 +166,24 @@ create_input_file(void *input, size_t input_len)
     return fmemopen(input, input_len, "r");
 #else
     /* Fallback: use tmpfile */
-    return tmpfile();
+    FILE* tmp = tmpfile();
+    if (tmp == NULL) {
+        return NULL;
+    }
+
+    // Write to tmp the input and flush
+    size_t written = fwrite(input, 1, input_len, tmp);
+    if (written != input_len) {
+        return NULL;
+    }
+    if (fflush(tmp) != 0) {
+        return NULL;
+    }
+
+    // Rewind tmp. QBE will read it.
+    rewind(tmp);
+
+    return tmp;
 #endif
 }
 
