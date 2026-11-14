@@ -1,4 +1,6 @@
 __pycache__
 .vscode
 **/*.pyd
+**/*.so
 target
+py-venv

@@ -3,6 +3,7 @@ from lang_lex import lexer
 from analysis import analyze
 import qbepy
 import subprocess
+import os
 
 il = """
 function w $add(w %a, w %b) {              # Define a function add
@@ -22,14 +23,25 @@ export function w $main() {                # Main function
 }
 """
 
+TARGET = 'amd64_sysv'
+OUTPUT_FILE = 'main'
+if TARGET.endswith('_win'):
+    OUTPUT_FILE = 'main.exe'
+output_file_path = 'target/{}'.format(OUTPUT_FILE)
+
 # compile to assembly
-asm = qbepy.compile_il(il, target = 'amd64_win')
+asm = qbepy.compile_il(il, target = TARGET)
+
+if not os.path.exists('target'):
+    os.makedirs('target')
+
 with open('target/main.s', 'w', encoding='utf-8') as f:
     print(asm, file=f)
 
-result = subprocess.run(['clang', 'target/main.s', '-o', 'target/main.exe'], capture_output=True, text=True)
+
+result = subprocess.run(['clang', 'target/main.s', '-o', output_file_path], capture_output=True, text=True)
 if result.returncode == 0:
-    print('successfully outputted main.exe')
+    print('successfully outputted to {}'.format(output_file_path))
 else:
     print('Error:\n', result.stderr)
 
