@@ -54,7 +54,7 @@ class UnaryOp(Expr):
 @dataclass
 class IdExpr(Expr):
     value: str
-    type: TyVar
+    type: Ty
 
 @dataclass
 class Group(Expr):

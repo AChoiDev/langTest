@@ -4,6 +4,7 @@ from analysis import analyze
 import qbepy
 import subprocess
 import os
+from emit import emit
 
 il = """
 function w $add(w %a, w %b) {              # Define a function add
@@ -26,9 +27,9 @@ export function w $main() {                # Main function
 
 code = '''
 main fn() {
-    val: = 1
+    val UInt = 1
     val = 10
-    val2 UInt = 2 + 100
+    val2 UInt = 2000 + 100
     val3: = val + val2
 
     // doIf: = true
@@ -76,7 +77,7 @@ export function w $main() {
 }
 '''
 
-TARGET = 'amd64_sysv'
+TARGET = 'amd64_win'
 OUTPUT_FILE = 'main'
 if TARGET.endswith('_win'):
     OUTPUT_FILE = 'main.exe'
@@ -101,11 +102,17 @@ if ast == None:
     raise Exception("Could not build syntax tree.")
 
 analyze(ast)
+print('AST after analysis')
+print(ast)
+il = emit(ast)
+print('Emitted IL')
+print(il)
 
 
 # Compile to assembly
 try:
     asm = qbepy.compile_il(il, target = TARGET)
+    print('Assembly:')
     print(asm)
 except Exception as e:
     print("Error while using QBE to compile IR.")

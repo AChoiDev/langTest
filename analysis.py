@@ -5,27 +5,31 @@ def analyze(ast):
     substitutions = {}
     default_constraints = []
 
-    type_vars = []
+    type_vars: list[TyVar] = []
     # Map variable name to type variable
     function_vars = {}
 
     # Initialize type inference metadata
     def traverse(node):
 
-        node_ty = type(node)
-
         if isinstance(node, Function):
             for statement in node.statements:
                 traverse(statement)
         elif isinstance(node, Statement):
             if node.variable != None:
+                var_name = node.variable.name
+                if function_vars.get(var_name) == None:
+                    function_vars[var_name] = TyVar()
+                    type_vars.append(function_vars[var_name])
+
+                constraints.append((function_vars[var_name], node.expr.type)) # type: ignore
+
+                if node.variable.type != None:
+                    constraints.append((node.variable.type, function_vars[var_name]))
+
                 if type(node.variable.type) == TyVar:
                     type_vars.append(node.variable.type)
-                constraints.append((node.variable.type, node.expr.type)) # type: ignore
 
-                # Currently assume all variables are assigned and declared once
-                assert function_vars.get(node.variable.name) == None
-                function_vars[node.variable.name] = node.variable.type
             traverse(node.expr)
         elif isinstance(node, BinOp):
             if type(node.type) == TyVar:
@@ -108,10 +112,16 @@ def analyze(ast):
         else:
             raise Exception('impossible')
 
+    print('CONSTRAINTS')
+    print(constraints)
+
     # Apply base constraints
     while len(constraints) > 0:
         item = constraints.pop(0)
         unify(item)
+
+    print('SUBSTITUTIONS')
+    print(substitutions)
 
     def get_base_type(ty: Ty) -> Ty:
         if type(ty) is TyCon:
@@ -130,18 +140,65 @@ def analyze(ast):
         if type(get_base_type(ty_var)) is TyVar:
             unify((ty_var, ty_con))
 
+    # Check that all the types reduce to type constants
+    for ty_var in type_vars:
+        base_ty = get_base_type(ty_var)
+        if not isinstance(base_ty, TyCon):
+            errors.append('Type of variable undefined: {}'.format(ty_var))
+        pass
+
     # Report errors
     if len(errors) > 0:
-        print("error!")
+        print("Error during type analysis:")
         print(errors)
+        raise Exception('Errors ocurred during type analysis')
 
-    # print('AST')
-    # print(ast)
+    print('AST analysis succeeded')
 
-    # print()
+    # Replacement step
+    # Modify the abstract syntax tree to have only concrete type
+    def traverse_replace_concrete(node):
+        if isinstance(node, Function):
+            for statement in node.statements:
+                traverse_replace_concrete(statement)
+        elif isinstance(node, Statement):
+            if node.variable != None and node.variable.type != None:
+                node.variable.type = get_base_type(node.variable.type)
+            traverse_replace_concrete(node.expr)
+        elif isinstance(node, BinOp):
+            node.type = get_base_type(node.type)
+            traverse_replace_concrete(node.left)
+            traverse_replace_concrete(node.right)
+        elif isinstance(node, Number):
+            node.type = get_base_type(node.type)
+        elif isinstance(node, Bool):
+            pass
+        elif isinstance(node, Group):
+            node.type = get_base_type(node.type)
+            traverse_replace_concrete(node.value)
+        elif isinstance(node, IdExpr):
+            node.type = get_base_type(node.type)
+        elif isinstance(node, IfExpr):
+            # TODO look into whether we can do a constraint
+            # between the condition expression and Bool
+            node.type = get_base_type(node.type)
 
-    # print('SUBSTITUTIONS')
-    # print(substitutions)
+            traverse_replace_concrete(node.condition)
+            for statement in node.if_block_statements:
+                traverse_replace_concrete(statement)
+            if node.else_block != None:
+                traverse_replace_concrete(node.else_block)
+
+        elif isinstance(node, ElseBlock):
+            for statement in node.else_block:
+                traverse_replace_concrete(statement)
+        else:
+            print('unknown node: ')
+            print(node)
+            raise Exception("unknown ast type detected")
+
+    # This should not fail as long as no errors have been encountered yet
+    traverse_replace_concrete(ast)
 
     # Evaluation Stage
 
