@@ -1,11 +1,24 @@
 import ply.lex as lex
 
 keywords = [
-    'if', 'else', 'while', 'for',
-    'continue', 'do', 'end', 'fn',
-    'return', 'struct', 'union', 'enum',
-    'or', 'and', 'true', 'false',
-    'auto', 'none'
+    'if', 
+    'else', 
+    # 'while', 
+    # 'for',
+    # 'continue',
+    # 'do',
+    # 'end',
+    'fn',
+    # 'return',
+    # 'struct',
+    # 'union',
+    # 'enum',
+    # 'or',
+    # 'and',
+    'true',
+    'false',
+    # 'auto',
+    # 'none'
 ]
 keywords_map = {}
 for keyword in keywords:
@@ -32,25 +45,25 @@ tokens = [
    'ASTERICK',
    'FORWARD_SLASH',
    'PERCENT',
-   'LEFT_SHIFT',
-   'RIGHT_SHIFT',
-   'AMPERSAND',
-   'PIPE',
-   'DOT2',
-   'DOT2_EQUAL',
+#    'LEFT_SHIFT',
+#    'RIGHT_SHIFT',
+#    'AMPERSAND',
+#    'PIPE',
+#    'DOT2',
+#    'DOT2_EQUAL',
 
     # Brackets
    'L_PAREN',
    'R_PAREN',
    'L_CURLY',
    'R_CURLY',
-   'L_SQUARE',
-   'R_SQUARE',
+#    'L_SQUARE',
+#    'R_SQUARE',
 
-   'UNDERSCORE',
+#    'UNDERSCORE',
    'EQUAL',
    'COMMA',
-   'DOT',
+#    'DOT',
    'BANG',
    'COLON',
    'SEMICOLON'
@@ -71,25 +84,25 @@ t_MINUS   = r'-'
 t_ASTERICK   = r'\*'
 t_FORWARD_SLASH  = r'/'
 t_PERCENT = r'\%'
-t_LEFT_SHIFT = r'<<'
-t_RIGHT_SHIFT = r'>>'
-t_AMPERSAND = r'\&'
-t_PIPE = r'\|'
-t_DOT2 = r'\.\.'
-t_DOT2_EQUAL = r'\.\.='
+# t_LEFT_SHIFT = r'<<'
+# t_RIGHT_SHIFT = r'>>'
+# t_AMPERSAND = r'\&'
+# t_PIPE = r'\|'
+# t_DOT2 = r'\.\.'
+# t_DOT2_EQUAL = r'\.\.='
 
 # Brackets
 t_L_PAREN  = r'\('
 t_R_PAREN  = r'\)'
-t_L_SQUARE  = r'\['
-t_R_SQUARE  = r'\]'
+# t_L_SQUARE  = r'\['
+# t_R_SQUARE  = r'\]'
 t_L_CURLY  = r'\{'
 t_R_CURLY  = r'\}'
 
-t_UNDERSCORE = r'_'
+# t_UNDERSCORE = r'_'
 t_EQUAL = r'='
 t_COMMA = r','
-t_DOT = r'\.'
+# t_DOT = r'\.'
 t_BANG = r'!'
 t_COLON = r':'
 t_SEMICOLON = r';'

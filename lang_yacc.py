@@ -96,7 +96,7 @@ def p_assignment_statement(p):
 
 def p_reassignment_statement(p):
     '''statement : ID EQUAL expression SEMICOLON'''
-    p[0] = Statement(p[3], StatementVariable(p[0], None))
+    p[0] = Statement(p[3], StatementVariable(p[1], None))
 
 def p_expr_bang(p):
     'expression : BANG expression'
