@@ -218,9 +218,6 @@ def p_function(p):
     if len(p) == 9:
         statement_list = p[6]
 
-    print("what")
-    print(p[6])
-
     p[0] = Function(p[1], statement_list)
 
 # Error rule for syntax errors

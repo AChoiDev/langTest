@@ -1,5 +1,38 @@
 from lang_yacc import Bool, ElseBlock, IfExpr, Statement, TyVar, BinOp, Number, Group, TyCon, Ty, Function, IdExpr
 
+def print_ast(node, depth: int):
+    pre_txt = '- ' * depth
+    if isinstance(node, Function):
+        print(pre_txt + 'Function {}'.format(node.name))
+
+        for statement in node.statements:
+            print_ast(statement, depth + 1)
+    elif isinstance(node, Statement):
+        print(pre_txt + 'Statement with {}'.format(node.variable))
+        print_ast(node.expr, depth + 1)
+    elif isinstance(node, Number):
+        print(pre_txt + str(node))
+    elif isinstance(node, BinOp):
+        print(pre_txt + 'BinOp {} of {}'.format(node.op, node.type))
+        print_ast(node.left, depth + 1)
+        print_ast(node.right, depth + 1)
+    elif isinstance(node, IdExpr):
+        print(pre_txt + str(node))
+    elif isinstance(node, IfExpr):
+        print(pre_txt + 'If ' + str(node.type))
+        print(pre_txt + 'condition:')
+        print_ast(node.condition, depth + 1)
+        print(pre_txt + 'statements:')
+        for statement in node.if_block_statements:
+            print_ast(statement, depth + 1)
+        if node.else_block != None:
+            print(pre_txt + 'else statements:')
+            for statement in node.else_block.else_block:
+                print_ast(statement, depth + 1)
+    else:
+        print(node)
+        raise Exception('unexpected node')
+
 def analyze(ast):
     constraints = []
     substitutions = {}
@@ -112,16 +145,16 @@ def analyze(ast):
         else:
             raise Exception('impossible')
 
-    print('CONSTRAINTS')
-    print(constraints)
+    # print('CONSTRAINTS')
+    # print(constraints)
 
     # Apply base constraints
     while len(constraints) > 0:
         item = constraints.pop(0)
         unify(item)
 
-    print('SUBSTITUTIONS')
-    print(substitutions)
+    # print('SUBSTITUTIONS')
+    # print(substitutions)
 
     def get_base_type(ty: Ty) -> Ty:
         if type(ty) is TyCon:
