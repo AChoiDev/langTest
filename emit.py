@@ -1,5 +1,7 @@
 from lang_yacc import Function, IfExpr, Statement, TyCon, BinOp, Number, Group, IdExpr
 
+var_types = dict()
+
 # Preconditions:
 # - All type variables must be set to type constants
 # - Unique variable declarations
@@ -22,10 +24,13 @@ def emit(ast) -> str:
             if statement.variable.type == None:
                 continue
             assert isinstance(statement.variable.type, TyCon) # True if analysis succeeded
+            var_types[statement.variable.name] = statement.variable.type.name
             if statement.variable.type.name == 'UInt':
                 output.append('    %{}_StackPtr =l alloc8 8'.format(statement.variable.name))
             elif statement.variable.type.name == 'Int':
                 output.append('    %{}_StackPtr =l alloc8 8'.format(statement.variable.name))
+            elif statement.variable.type.name == 'UInt32':
+                output.append('    %{}_StackPtr =l alloc4 4'.format(statement.variable.name))
             else:
                 raise Exception('unsupported emission type')
 
@@ -37,12 +42,20 @@ def emit(ast) -> str:
 
     return '\n'.join(output)
 
+
 # Emit Statements in a block
 def emit_statement_list(statements: list[Statement], output):
     for statement in statements:
         tmp = emit_expr(statement.expr, output)
         if statement.variable != None:
-            output.append('    storel {}, %{}_StackPtr'.format(tmp, statement.variable.name))
+            ty_name = var_types[statement.variable.name]
+            if ty_name in ['UInt', 'Int']:
+                output.append('    storel {}, %{}_StackPtr'.format(tmp, statement.variable.name))
+            elif ty_name in ['UInt32', 'Int32']:
+                output.append('    storew {}, %{}_StackPtr'.format(tmp, statement.variable.name))
+            else:
+                raise Exception('unhandled ty')
+
         
 # Make an anonymous temporary
 anon_count = -1
@@ -61,23 +74,42 @@ def make_label_id() -> int:
 def emit_expr(node, output: list[str]) -> str:
     if isinstance(node, BinOp):
         assert node.op == '+'
-        assert node.type.name == 'UInt' # type: ignore
+        ty_name = node.type.name # type: ignore
 
         lh_expr = emit_expr(node.left, output)
         rh_expr = emit_expr(node.right, output)
 
         anon_id = make_anon()
-        output.append('    %anon_i{} =l add {}, {}'.format(anon_id, lh_expr, rh_expr))
+
+        if ty_name in ['UInt', 'Int']:
+            output.append('    %anon_i{} =l add {}, {}'.format(anon_id, lh_expr, rh_expr))
+        elif ty_name in ['Int32', 'UInt32']:
+            output.append('    %anon_i{} =w add {}, {}'.format(anon_id, lh_expr, rh_expr))
+        else:
+            raise Exception('unhandled type')
+
         return '%anon_i{}'.format(anon_id)
     elif isinstance(node, Number):
-        assert node.type.name in ['UInt', 'Int'] # type: ignore
-        return node.value
+        assert node.type.name in ['UInt', 'Int', 'UInt32'] # type: ignore
+        ty_name = node.type.name # type: ignore
+        return str(node.value)
+        if ty_name in ['UInt', 'Int']:
+            return str(node.value)
+        elif ty_name in ['UInt32', 'Int32']:
+            return 'w ' + str(node.value)
+        else:
+            raise Exception('unhandled type')
     elif isinstance(node, Group):
         raise Exception('unhandled expression')
     elif isinstance(node, IdExpr):
-        assert node.type.name in ['UInt', 'Int'] # type: ignore
+        ty_name = node.type.name # type: ignore
         anon_id = make_anon()
-        output.append('    %anon_i{} =l loadl %{}_StackPtr'.format(anon_id, node.value))
+        if ty_name in ['UInt', 'Int']:
+            output.append('    %anon_i{} =l loadl %{}_StackPtr'.format(anon_id, node.value))
+        elif ty_name in ['Int32', 'UInt32']:
+            output.append('    %anon_i{} =w loadw %{}_StackPtr'.format(anon_id, node.value))
+        else:
+            raise Exception('unhandled type')
         return '%anon_i{}'.format(anon_id)
     elif isinstance(node, IfExpr):
         label_id = make_label_id()

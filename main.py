@@ -10,7 +10,7 @@ code = '''
 main fn() {
     1000
 
-    val UInt = 1
+    val UInt32 = 1
     val = 10
 
     doIf: = 1
@@ -20,7 +20,7 @@ main fn() {
         val = 30
     }
 
-    val2 UInt = 2000 + 100
+    val2 UInt32 = 2000 + 100
     val3: = val + val2
 
     // return val3
@@ -34,7 +34,6 @@ OUTPUT_FILE = 'main'
 if TARGET.endswith('_win'):
     OUTPUT_FILE = 'main.exe'
 output_file_path = 'target/{}'.format(OUTPUT_FILE)
-
 
 
 # Obtain token list
