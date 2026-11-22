@@ -112,6 +112,8 @@ def p_binary_expression(p):
                 | expression PLUS expression
                 | expression MINUS expression
                 | expression ASTERICK expression
+                | expression KEY_and expression
+                | expression KEY_or expression
                 | expression FORWARD_SLASH expression'''
     
     p[0] = BinOp(p[1], p[3], p[2], TyVar())

@@ -10,6 +10,8 @@ def print_ast(node, depth: int):
     elif isinstance(node, Statement):
         print(pre_txt + 'Statement with {}'.format(node.variable))
         print_ast(node.expr, depth + 1)
+    elif isinstance(node, Bool):
+        print(pre_txt + str(node))
     elif isinstance(node, Number):
         print(pre_txt + str(node))
     elif isinstance(node, BinOp):

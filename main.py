@@ -8,20 +8,27 @@ from emit import emit
 
 code = '''
 main fn() {
+    foodGood: = true
+    driveGood Bool = true
+    lifeGood: = foodGood and driveGood
+
     1000
 
     val UInt32 = 1
     val = 10
 
-    doIf: = 1
+    doIf: = lifeGood
     if doIf {
-        val = 20
+        val = 40
     } else {
         val = 30
     }
+    val = val / 10
 
-    val2 UInt32 = 2000 + 100
+    val2 UInt32 = 4000 + 100
+    val2 = val2 - 1000
     val3: = val + val2
+    val3 = val3 * 10
 
     // return val3
 
