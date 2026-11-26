@@ -9,7 +9,7 @@ keywords = [
     # 'do',
     # 'end',
     'fn',
-    # 'return',
+    'return',
     # 'struct',
     # 'union',
     # 'enum',
@@ -156,10 +156,6 @@ def t_eof(t):
         return t
     return None
 
-def t_ID(t):
-    r'[a-zA-Z_][a-zA-Z_0-9]*'
-    t.type = keywords_map.get(t.value, 'ID')
-    return t
 
 # A string containing ignored characters (spaces and tabs)
 t_ignore  = ' \t\r\f'
@@ -191,16 +187,25 @@ def t_COMMENT(t):
 
 # TODO special multiline string handling
 def t_STRING(t):
-    r'\"'
+    r'c?\"'
+
+    lexdata = t.lexer.lexdata
+    init_lexpos = t.lexer.lexpos
+
+    ty = 'Str'
+
+    if init_lexpos >= 2:
+        preceding_char = lexdata[init_lexpos - 2]
+        if preceding_char == 'c':
+            ty = 'StaticCStr'
+
 
     # Consume string characters until a second quotation mark is found
-    lexdata = t.lexer.lexdata
     str_len = 0
-    init_lexpos = t.lexer.lexpos
     while True:
         lexpos = t.lexer.lexpos
         if lexpos >= len(lexdata):
-            raise lex.LexError(f"Closing quotation mark not found after position TODO")
+            raise lex.LexError(f"Closing quotation mark not found after position TODO") # type: ignore
         elif lexdata[lexpos] == '\"':
             # Found closing quotation mark. Stop.
             t.lexer.skip(1)
@@ -210,7 +215,14 @@ def t_STRING(t):
             str_len += 1
             t.lexer.skip(1)
 
-    t.value = lexdata[init_lexpos:init_lexpos+str_len]
+    t.value = (lexdata[init_lexpos:init_lexpos+str_len], ty)
+    return t
+
+# Must come after t_STRING
+# c"Hello" may be parsed as ID("c") and STRING("Hello")
+def t_ID(t):
+    r'[a-zA-Z_][a-zA-Z_0-9]*'
+    t.type = keywords_map.get(t.value, 'ID')
     return t
     
 lexer = lex.lex()

@@ -4,7 +4,7 @@ import ply.yacc as yacc
 # Get the token map from the lexer.  This is required.
 from lang_lex import tokens
 
-start = 'function'
+start = 'file'
 
 precedence = (
     ('nonassoc', 'LESSER', 'GREATER', 'EQUAL_EQUAL', 'LESSER_EQUAL', 'GREATER_EQUAL', 'NOT_EQUAL'),
@@ -82,17 +82,21 @@ class StatementVariable:
     type: Ty | None
 
 @dataclass
+class Return:
+    pass
+
+@dataclass
 class Statement:
     expr: Expr
-    variable: StatementVariable | None
+    variable: Return | StatementVariable | None
 
 def p_infer_assignment_statement(p):
     '''statement : ID COLON EQUAL expression SEMICOLON'''
     p[0] = Statement(p[4], StatementVariable(p[1], TyVar()))
 
 def p_assignment_statement(p):
-    '''statement : ID ID EQUAL expression SEMICOLON'''
-    p[0] = Statement(p[4], StatementVariable(p[1], TyCon(p[2])))
+    '''statement : ID COLON ID EQUAL expression SEMICOLON'''
+    p[0] = Statement(p[5], StatementVariable(p[1], TyCon(p[3])))
 
 def p_reassignment_statement(p):
     '''statement : ID EQUAL expression SEMICOLON'''
@@ -105,6 +109,20 @@ def p_expr_bang(p):
 def p_expr_uminus(p):
     'expression : MINUS expression %prec UMINUS'
     p[0] = UnaryOp(p[2], p[1], TyVar())
+
+@dataclass
+class Call(Expr):
+    name: str
+    type: Ty
+    inputs: list[Expr]
+
+def p_expr_call_empty(p):
+    'expression : ID L_PAREN R_PAREN'
+    p[0] = Call(p[1], TyVar(), [])
+
+def p_expr_call_some(p):
+    'expression : ID L_PAREN expression_list R_PAREN'
+    p[0] = Call(p[1], TyVar(), p[3])
 
 def p_binary_expression(p):
     '''expression : expression EQUAL_EQUAL expression
@@ -126,7 +144,8 @@ def p_expr_num(p):
 def p_expr_str(p):
     'expression : STRING'
     # TODO look into other string types 
-    p[0] = String(p[1], TyCon('Str'))
+    (value, ty) = p[1]
+    p[0] = String(value, TyCon(ty))
 
 def p_expr_id(p):
     'expression : ID'
@@ -192,6 +211,9 @@ def p_if_expr(p):
         raise Exception("Unexpected length of tokens")
 
 
+def p_return_statement(p):
+    'statement : KEY_return expression SEMICOLON'
+    p[0] = Statement(p[2], Return())
 
 def p_expr_statement(p):
     'statement : expression SEMICOLON'
@@ -206,26 +228,80 @@ def p_statement_list(p):
     else:
         p[0] = p[1] + [p[2]]
 
+def p_expr_list_single(p):
+    'expression_list : expression'
+    p[0] = [p[1]]
+
+def p_expr_list_multi(p):
+    'expression_list : expression_list COMMA expression'
+    p[0] = p[1] + [p[3]]
+
+def p_param_list_single(p):
+    'param_list : ID COLON ID'
+    p[0] = [(p[1], TyCon(p[3]))]
+
+def p_param_list_multi(p):
+    'param_list : param_list COMMA ID COLON ID'
+    p[0] = p[1] + [(p[3], TyCon(p[5]))]
 
 @dataclass
 class Function:
     name: str
+    ty: TyCon
     statements: list[Statement]
+    params: list[tuple[str, TyCon]]
 
-def p_function(p):
-    '''function : ID KEY_fn L_PAREN R_PAREN L_CURLY R_CURLY SEMICOLON
-                | ID KEY_fn L_PAREN R_PAREN L_CURLY statement_list R_CURLY SEMICOLON'''
+# All function permutations
+def p_function_all_none(p):
+    'function : ID KEY_fn L_PAREN R_PAREN L_CURLY R_CURLY SEMICOLON'
+    p[0] = Function(p[1], TyCon('Void'), [], [])
 
-    statement_list = []
-    if len(p) == 9:
-        statement_list = p[6]
+def p_function_some_params_none_ret_none_statement(p):
+    'function : ID KEY_fn L_PAREN param_list R_PAREN L_CURLY R_CURLY SEMICOLON'
+    p[0] = Function(p[1], TyCon('Void'), [], p[4])
 
-    p[0] = Function(p[1], statement_list)
+def p_function_none_params_some_ret_none_statement(p):
+    'function : ID KEY_fn L_PAREN R_PAREN ID L_CURLY R_CURLY SEMICOLON'
+    p[0] = Function(p[1], TyCon(p[5]), [], [])
+
+def p_function_some_params_some_ret_none_statement(p):
+    'function : ID KEY_fn L_PAREN param_list R_PAREN ID L_CURLY R_CURLY SEMICOLON'
+    p[0] = Function(p[1], TyCon(p[6]), [], p[4])
+
+def p_function_none_params_none_ret_some_statement(p):
+    'function : ID KEY_fn L_PAREN R_PAREN L_CURLY statement_list R_CURLY SEMICOLON'
+    p[0] = Function(p[1], TyCon('Void'), p[6], [])
+
+def p_function_some_params_none_ret_some_statement(p):
+    'function : ID KEY_fn L_PAREN param_list R_PAREN L_CURLY statement_list R_CURLY SEMICOLON'
+    p[0] = Function(p[1], TyCon('Void'), p[7], p[4])
+
+def p_function_none_params_some_ret_some_statement(p):
+    'function : ID KEY_fn L_PAREN R_PAREN ID L_CURLY statement_list R_CURLY SEMICOLON'
+    p[0] = Function(p[1], TyCon(p[5]), p[7], [])
+
+def p_function_all_some(p):
+    'function : ID KEY_fn L_PAREN param_list R_PAREN ID L_CURLY statement_list R_CURLY SEMICOLON'
+    p[0] = Function(p[1], TyCon(p[6]), p[8], p[4])
+
+@dataclass
+class LangFile:
+    functions: list[Function]
+
+def p_file(p):
+    '''file : function
+            | file function'''
+
+    if len(p) == 2:
+        p[0] = LangFile([p[1]])
+    else:
+        p[0] = p[1]
+        p[0].functions += [p[2]]
 
 # Error rule for syntax errors
 def p_error(p):
     print("Unexpected item: ", p)
-    print("Syntax error while building ast!")
+    raise Exception('Syntax error while building ast!')
 
 # Build the parser
 parser = yacc.yacc()

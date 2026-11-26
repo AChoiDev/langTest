@@ -4,37 +4,12 @@ from analysis import analyze, print_ast
 import qbepy
 import subprocess
 import os
-from emit import emit
+from emit import emit_file
 
-code = '''
-main fn() {
-    foodGood: = true
-    driveGood Bool = true
-    lifeGood: = foodGood and driveGood
-
-    1000
-
-    val UInt32 = 1
-    val = 10
-
-    doIf: = lifeGood
-    if doIf {
-        val = 40
-    } else {
-        val = 30
-    }
-    val = val / 10
-
-    val2 UInt32 = 4000 + 100
-    val2 = val2 - 1000
-    val3: = val + val2
-    val3 = val3 * 10
-
-    // return val3
-
-    // ret val3
-}
-'''
+code = None
+with open("main.rs", "r", encoding="utf-8") as f:
+    code = f.read()
+    f.flush()
 
 TARGET = 'amd64_win'
 OUTPUT_FILE = 'main'
@@ -56,22 +31,24 @@ while True:
 
 print('starting ast parse')
 ast = parser.parse(code)
+print_ast(ast, 0)
 
 if ast == None:
     raise Exception("Could not build syntax tree.")
 
 print('starting ast analysis')
 analyze(ast)
-print_ast(ast, 0)
-il = emit(ast)
+print('AST analysis succeeded')
+il = emit_file(ast)
 print('QBE IL Emitted')
 
 with open('target/main.qbe', 'w', encoding='utf-8') as f:
     print(il, file=f)
+    f.flush()
 
 # Compile to assembly
 try:
-    asm = qbepy.compile_il(il, target = TARGET)
+    asm = qbepy.compile_il(il, target = TARGET) # type: ignore (target)
 except Exception as e:
     print("Error while using QBE to compile IR.")
     print(e)
@@ -84,6 +61,7 @@ if not os.path.exists('target'):
 
 with open('target/main.s', 'w', encoding='utf-8') as f:
     print(asm, file=f)
+    f.flush()
 
 # Run assembler and linker
 result = subprocess.run(['clang', 'target/main.s', '-o', output_file_path], capture_output=True, text=True)

@@ -1,9 +1,13 @@
-from lang_yacc import Bool, ElseBlock, IfExpr, Statement, TyVar, BinOp, Number, Group, TyCon, Ty, Function, IdExpr
+from lang_yacc import Bool, Call, ElseBlock, LangFile, IfExpr, Statement, StatementVariable, String, TyVar, BinOp, Number, Group, TyCon, Ty, Function, IdExpr
 
 def print_ast(node, depth: int):
     pre_txt = '- ' * depth
-    if isinstance(node, Function):
-        print(pre_txt + 'Function {}'.format(node.name))
+    if isinstance(node, LangFile):
+        print(pre_txt + 'File')
+        for func in node.functions:
+            print_ast(func, depth + 1)
+    elif isinstance(node, Function):
+        print(pre_txt + 'Function "{}", {}'.format(node.name, node.ty))
 
         for statement in node.statements:
             print_ast(statement, depth + 1)
@@ -11,6 +15,8 @@ def print_ast(node, depth: int):
         print(pre_txt + 'Statement with {}'.format(node.variable))
         print_ast(node.expr, depth + 1)
     elif isinstance(node, Bool):
+        print(pre_txt + str(node))
+    elif isinstance(node, String):
         print(pre_txt + str(node))
     elif isinstance(node, Number):
         print(pre_txt + str(node))
@@ -31,18 +37,47 @@ def print_ast(node, depth: int):
             print(pre_txt + 'else statements:')
             for statement in node.else_block.else_block:
                 print_ast(statement, depth + 1)
+    elif isinstance(node, Call):
+        print(pre_txt + str(node))
+        for expr in node.inputs:
+            print_ast(expr, depth + 1)
     else:
-        print(node)
+        print('Unexpected node: ' + str(node))
         raise Exception('unexpected node')
 
-def analyze(ast):
-    constraints = []
+def analyze(ast: LangFile):
+    func_table: dict[str, Function] = {}
+    for func in ast.functions:
+        if func.name in func_table:
+            raise Exception('func duplicate found')
+
+        func_table[func.name] = func
+    for func in ast.functions:
+        analyze_fn(func, func_table)
+
+def analyze_fn(ast: Function, func_table: dict[str, Function]):
+
+    constraints: list[tuple[Ty, Ty]] = []
     substitutions = {}
     default_constraints = []
 
     type_vars: list[TyVar] = []
     # Map variable name to type variable
     function_vars = {}
+
+    # Analyse params
+    for param in ast.params:
+        var_name = param[0]
+        ty = param[1]
+        assert isinstance(ty, TyCon)
+        assert function_vars.get(var_name) == None
+
+        function_vars[var_name] = TyVar()
+        type_vars.append(function_vars[var_name])
+
+        # TODO add a constraint here between default value and var type
+
+        constraints.append((ty, function_vars[var_name]))
 
     # Initialize type inference metadata
     def traverse(node):
@@ -51,7 +86,7 @@ def analyze(ast):
             for statement in node.statements:
                 traverse(statement)
         elif isinstance(node, Statement):
-            if node.variable != None:
+            if isinstance(node.variable, StatementVariable):
                 var_name = node.variable.name
                 if function_vars.get(var_name) == None:
                     function_vars[var_name] = TyVar()
@@ -73,6 +108,8 @@ def analyze(ast):
             constraints.append((node.type, node.right.type)) # type: ignore
             traverse(node.left)
             traverse(node.right)
+        elif isinstance(node, String):
+            pass
         elif isinstance(node, Number):
             if type(node.type) == TyVar:
                 type_vars.append(node.type)
@@ -89,6 +126,7 @@ def analyze(ast):
             if decl_ty != None:
                 constraints.append((decl_ty, node.type))
             else:
+                print(node)
                 raise Exception('Declaration missing')
         elif isinstance(node, IfExpr):
             # TODO look into whether we can do a constraint
@@ -104,6 +142,21 @@ def analyze(ast):
         elif isinstance(node, ElseBlock):
             for statement in node.else_block:
                 traverse(statement)
+        elif isinstance(node, Call):
+            func = func_table.get(node.name)
+            assert func != None
+            assert len(func.params) == len(node.inputs)
+
+            # return type must match call type
+            constraints.append((node.type, func.ty))
+
+            # Iterate through params
+            # Apply constraint from inputs to param types
+            for i in range(len(node.inputs)):
+                input_expr = node.inputs[i]
+                (_, param_ty) = func.params[i]
+                traverse(input_expr)
+                constraints.append((input_expr.type, param_ty)) # type: ignore
         else:
             print('unknown node: ')
             print(node)
@@ -188,7 +241,6 @@ def analyze(ast):
         print(errors)
         raise Exception('Errors ocurred during type analysis')
 
-    print('AST analysis succeeded')
 
     # Replacement step
     # Modify the abstract syntax tree to have only concrete type
@@ -197,7 +249,7 @@ def analyze(ast):
             for statement in node.statements:
                 traverse_replace_concrete(statement)
         elif isinstance(node, Statement):
-            if node.variable != None and node.variable.type != None:
+            if isinstance(node.variable, StatementVariable) and node.variable.type != None:
                 node.variable.type = get_base_type(node.variable.type)
             traverse_replace_concrete(node.expr)
         elif isinstance(node, BinOp):
@@ -207,6 +259,8 @@ def analyze(ast):
         elif isinstance(node, Number):
             node.type = get_base_type(node.type)
         elif isinstance(node, Bool):
+            pass
+        elif isinstance(node, String):
             pass
         elif isinstance(node, Group):
             node.type = get_base_type(node.type)
@@ -227,6 +281,10 @@ def analyze(ast):
         elif isinstance(node, ElseBlock):
             for statement in node.else_block:
                 traverse_replace_concrete(statement)
+        elif isinstance(node, Call):
+            node.type = get_base_type(node.type)
+            for input_expr in node.inputs:
+                traverse_replace_concrete(input_expr)
         else:
             print('unknown node: ')
             print(node)
@@ -234,45 +292,3 @@ def analyze(ast):
 
     # This should not fail as long as no errors have been encountered yet
     traverse_replace_concrete(ast)
-
-    # Evaluation Stage
-
-    assert type(ast) is Function
-
-
-    '''
-    # Maps variable names to values
-    environment = {}
-
-    def evaluate(expr):
-        if type(expr) is Function:
-            for statement in expr.statements:
-                evaluate(statement)
-        elif type(expr) is Statement:
-            value = evaluate(expr.expr)
-            if expr.variable == None:
-                # TODO return value
-                pass
-            else:
-                environment[expr.variable.name] = value
-        elif type(expr) is BinOp:
-            print(expr)
-            assert expr.op == '+'
-            return evaluate(expr.left) + evaluate(expr.right)
-        elif type(expr) is Number:
-            # TODO assert integer type
-            return int(expr.value)
-        elif type(expr) is Group:
-            return evaluate(expr.value)
-        elif type(expr) is IdExpr:
-            val = environment.get(expr.value)
-            assert val != None
-            return val
-        else:
-            raise Exception('unknown node type')
-    '''
-        
-    # evaluate(ast)
-    # print(environment)
-
-    # for statement in ast.statements:
