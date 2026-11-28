@@ -30,7 +30,7 @@ while True:
         break
 
 print('starting ast parse')
-ast = parser.parse(code)
+ast = parser.parse(code, debug=True)
 print_ast(ast, 0)
 
 if ast == None:
@@ -39,6 +39,7 @@ if ast == None:
 print('starting ast analysis')
 analyze(ast)
 print('AST analysis succeeded')
+print_ast(ast, 0)
 il = emit_file(ast)
 print('QBE IL Emitted')
 

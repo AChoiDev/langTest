@@ -10,7 +10,7 @@ keywords = [
     # 'end',
     'fn',
     'return',
-    # 'struct',
+    'struct',
     # 'union',
     # 'enum',
     'or',
@@ -32,7 +32,7 @@ tokens = [
    'GREATER',
    'LESSER',
    'NOT_EQUAL',
-   'EQUAL_EQUAL',
+#    'EQUAL_EQUAL',
 
    'NUMBER',
    'ID',
@@ -63,7 +63,8 @@ tokens = [
 #    'UNDERSCORE',
    'EQUAL',
    'COMMA',
-#    'DOT',
+   'DOT',
+   'DOT_EQUAL',
    'BANG',
    'COLON',
    'SEMICOLON'
@@ -76,7 +77,7 @@ t_LESSER_EQUAL = r'<='
 t_GREATER = r'>'
 t_LESSER = r'<'
 t_NOT_EQUAL = r'!='
-t_EQUAL_EQUAL = r'=='
+# t_EQUAL_EQUAL = r'=='
 
 # Operators
 t_PLUS    = r'\+'
@@ -102,7 +103,8 @@ t_R_CURLY  = r'\}'
 # t_UNDERSCORE = r'_'
 t_EQUAL = r'='
 t_COMMA = r','
-# t_DOT = r'\.'
+t_DOT = r'\.'
+t_DOT_EQUAL = r'\.='
 t_BANG = r'!'
 t_COLON = r':'
 t_SEMICOLON = r';'
@@ -121,7 +123,7 @@ def t_newline(t):
     # Don't emit semicolon if the preceding token is in the exclusion list
     prev_exclude_list = [
         None, 'PLUS', 'MINUS', 'ASTERICK', 
-        'FORWARD_SLASH', 'L_PAREN', 'SEMICOLON',
+        'FORWARD_SLASH', 'L_PAREN', 'SEMICOLON', 'COMMA',
         'L_SQUARE', 'L_CURLY'
     ]
     if t.lexer.prev_token_type in prev_exclude_list:

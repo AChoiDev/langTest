@@ -1,6 +1,20 @@
-from lang_yacc import Bool, Call, Function, IfExpr, LangFile, Return, Statement, StatementVariable, String, TyCon, BinOp, Number, Group, IdExpr
+from dataclasses import dataclass
 
-var_types = dict()
+from lang_yacc import Bool, Call, DotOp, Function, IfExpr, LangFile, LangStruct, Return, Statement, StatementVariable, String, StructInit, TyCon, BinOp, Number, Group, IdExpr
+
+@dataclass
+class StructInfo:
+    size: int
+    alignment: int
+    # tuple of type name and field offset
+    fields: dict[str, tuple[str, int]]
+
+# registry of structure types
+struct_types: dict[str, StructInfo] = {}
+
+# map function variable names to types
+# TODO make this per function safe
+var_types: dict[str, str] = {}
 
 def emit_file(ast: LangFile) -> str:
     output = []
@@ -8,10 +22,24 @@ def emit_file(ast: LangFile) -> str:
     # output globals
     output.append('data $panicFlag = { w 0 }')
 
-    # Emit Functions
-    for func in ast.functions:
-        emit_func(func, output)
+    for item in ast.definitions:
+        if isinstance(item, LangStruct):
+            assert item.name not in struct_types
+            assert item.name == 'Triple'
+            struct_types[item.name] = StructInfo(
+                12, 
+                4, 
+                { 'a': ('UInt32', 0), 'b': ('UInt32', 4), 'c': ('Bool', 8) }
+            )
 
+    # Emit Functions
+    for definition in ast.definitions:
+        if isinstance(definition, Function):
+            emit_func(definition, output)
+        elif isinstance(definition, LangStruct):
+            emit_struct(definition, output)
+        else:
+            raise Exception('Unhandled definition')
 
     # Emit string constants
     global cstr_static_registry
@@ -21,6 +49,10 @@ def emit_file(ast: LangFile) -> str:
         count += 1
 
     return '\n'.join(output)
+
+def emit_struct(ast: LangStruct, output: list[str]):
+    # TODO
+    pass
 
 # Preconditions:
 # - All type variables must be set to type constants
@@ -87,7 +119,19 @@ def emit_func(ast: Function, output: list[str]):
                 output.append('    %{}_StackPtr =l alloc8 8'.format(statement.variable.name))
             elif statement.variable.type.name in ['UInt32', 'Int32', 'Bool']:
                 output.append('    %{}_StackPtr =l alloc4 4'.format(statement.variable.name))
+            elif statement.variable.type.name in struct_types:
+                # Output a stack ptr with custom allocation size for struct
+                struct_ty_name = statement.variable.type.name 
+                assert struct_ty_name in struct_types
+                struct_info = struct_types[struct_ty_name]
+                if struct_info.alignment == 4:
+                    output.append('    %{}_StackPtr =l alloc4 {}'.format(statement.variable.name, struct_info.size))
+                elif struct_info.alignment == 8:
+                    output.append('    %{}_StackPtr =l alloc8 {}'.format(statement.variable.name, struct_info.size))
+                else:
+                    raise Exception('unexpected alignment')
             else:
+                print(statement.variable)
                 raise Exception('unsupported emission type')
 
     emit_statement_list(ast.statements, output)
@@ -111,6 +155,9 @@ def emit_statement_list(statements: list[Statement], output):
                 output.append('    storel {}, %{}_StackPtr'.format(tmp, statement.variable.name))
             elif ty_name in ['UInt32', 'Int32', 'Bool']:
                 output.append('    storew {}, %{}_StackPtr'.format(tmp, statement.variable.name))
+            elif ty_name in struct_types:
+                # Copy pointer from expression
+                output.append('    %{}_StackPtr =l copy {}'.format(statement.variable.name, tmp))
             else:
                 raise Exception('unhandled ty')
         elif isinstance(statement.variable, Return):
@@ -213,14 +260,19 @@ def emit_expr(node, output: list[str]) -> str:
         raise Exception('unhandled expression')
     elif isinstance(node, IdExpr):
         ty_name = node.type.name # type: ignore
-        anon_id = make_anon()
         if ty_name in ['UInt', 'Int', 'StaticCStr']:
+            anon_id = make_anon()
             output.append('    %anon_i{} =l loadl %{}_StackPtr'.format(anon_id, node.value))
+            return '%anon_i{}'.format(anon_id)
         elif ty_name in ['Int32', 'UInt32', 'Bool']:
+            anon_id = make_anon()
             output.append('    %anon_i{} =w loadw %{}_StackPtr'.format(anon_id, node.value))
+            return '%anon_i{}'.format(anon_id)
+        elif ty_name in struct_types:
+            return '%{}_StackPtr'.format(node.value)
         else:
+            print(node)
             raise Exception('unhandled type')
-        return '%anon_i{}'.format(anon_id)
     elif isinstance(node, IfExpr):
         assert node.condition.type.name == 'Bool' # type: ignore
 
@@ -277,5 +329,75 @@ def emit_expr(node, output: list[str]) -> str:
             raise Exception('unexepected call type')
 
         return '%anon_i{}'.format(anon_id)
+    elif isinstance(node, StructInit):
+        assert isinstance(node.type, TyCon)
+        output_tmp = make_anon()
 
+        struct_ty_name = node.type.name
+
+        # Allocate space for structure
+        assert struct_ty_name in struct_types
+        struct_info = struct_types[struct_ty_name]
+        if struct_info.alignment == 4:
+            output.append('    %anon_i{} =l alloc4 {}'.format(output_tmp, struct_info.size))
+        elif struct_info.alignment == 8:
+            output.append('    %anon_i{} =l alloc8 {}'.format(output_tmp, struct_info.size))
+        else:
+            raise Exception('unexpected alignment')
+
+        # Output per field assignment
+        for item in node.field_assign_list:
+            (field_name, assignment_expr) = item
+            field_value_tmp = emit_expr(assignment_expr, output)
+            field_address_tmp_id = make_anon()
+
+            assert field_name in struct_info.fields
+            (field_ty_name, field_offset) = struct_info.fields[field_name]
+
+            # Obtain field address
+            output.append('    %anon_i{} =l add {}, %anon_i{}'.format(field_address_tmp_id, field_offset, output_tmp))
+
+            # Write expression value to field address
+            if field_ty_name in ['UInt', 'Int']:
+                output.append('    storel {}, %anon_i{}'.format(field_value_tmp, field_address_tmp_id))
+            elif field_ty_name in ['UInt32', 'Int32', 'Bool']:
+                output.append('    storew {}, %anon_i{}'.format(field_value_tmp, field_address_tmp_id))
+            else: 
+                raise Exception('field type not handled')
+
+        return '%anon_i{}'.format(output_tmp)
+
+    elif isinstance(node, DotOp):
+        assert isinstance(node.type, TyCon)
+        assert isinstance(node.left.type, TyCon) # type: ignore
+        lh_ty_name = node.left.type.name # type: ignore
+
+        assert lh_ty_name in struct_types
+        struct_info = struct_types[lh_ty_name]
+
+        # Retrieve the field offset
+        assert node.field in struct_info.fields
+        (_, field_offset) = struct_info.fields[node.field]
+
+        # if type is struct, this tmp will be a struct pointer
+        lh_expr_tmp = emit_expr(node.left, output)
+
+        # Obtain address of field
+        field_address_tmp_id = make_anon()
+        output.append('    %anon_i{} =l add {}, {}'.format(field_address_tmp_id, lh_expr_tmp, field_offset))
+
+        field_val_tmp_id = make_anon()
+        # Load value into new temporary
+        if node.type.name in ['UInt', 'Int']:
+            output.append('    %anon_i{} =l loadl %anon_i{}'.format(field_val_tmp_id, field_address_tmp_id))
+        elif node.type.name in ['UInt32', 'Int32', 'Bool']:
+            output.append('    %anon_i{} =w loadw %anon_i{}'.format(field_val_tmp_id, field_address_tmp_id))
+        else:
+            raise Exception('unexected field access type')
+
+        return '%anon_i{}'.format(field_val_tmp_id)
+
+
+        
+    print(node)
     raise Exception('unhandled expression')
